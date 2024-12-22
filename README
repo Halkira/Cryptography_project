@@ -1,0 +1,6 @@
+L'objectif est de chiffrer la clé privée. Elle est d'abord chiffrée avec AES-GCM en utilisant une clé dérivée à partir du mot de passe que tu rentres et du sel.
+
+La clé est ensuite dissimulée dans une structure de données aléatoire contenant 15 à 25 champs. Seuls 5 champs contiennent les vraies données (la clé chiffrée, le sel, le nonce, le tag d'authentification), les autres contiennent des données aléatoires. Cela permet d'éviter que, lorsqu'on tombe sur le fichier, on puisse identifier le format de la structure du fichier et tenter du brute force (même si peu probable avec le chiffrement + le sel).
+
+Un "field_map" (dictionnaire contenant l'emplacement des vraies données) est chiffré avec le mot de passe et stocké dans l'un des champs de la structure. Le mot de passe permet de déchiffrer ce field_map et ainsi connaître l'emplacement des données importantes. Une fois la structure connue, tu utilises le sel et le mot de passe rentré pour dériver ta clé AES. Et une fois que tu as la clé AES, avec le nonce (qui est dans la structure), tu peux déchiffrer la clé privée.
+
