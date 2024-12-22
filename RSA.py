@@ -3,11 +3,9 @@ import string
 import json
 import base64
 import time
-import getpass
-
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto.Protocol.KDF import scrypt, PBKDF2
+from Crypto.Protocol.KDF import scrypt
 from Crypto.Random import get_random_bytes
 
 def encrypt_rsa(message, public_key):
