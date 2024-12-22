@@ -69,12 +69,9 @@ def main():
                 else:
                     print(f"\nMessage chiffré : {encrypted}\n")
 
-
             elif choix == "2":
-
                 encrypted_message = input("Entrez le message chiffré : ")
                 if algo_choix == "1":
-
                     try:
                         # Mot de passe du fichier d'abord
                         file_password = getpass.getpass("Entrez le mot de passe du fichier : ")
@@ -102,7 +99,14 @@ def main():
                     except Exception as e:
                         print(f"Erreur lors du déchiffrement : {e}")
                         traceback.print_exc()
-
+                else:
+                    decrypted = AES.decrypt_aes(encrypted_message, aes_key)
+                    if decrypted is None:
+                        print("Erreur de déchiffrement. Veuillez réessayer.\n")
+                    else:
+                        print(f"\nMessage déchiffré : {decrypted}\n")
+            else:
+                print("Choix invalide. Veuillez réessayer.\n")
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,6 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Protocol.KDF import scrypt, PBKDF2
 from Crypto.Random import get_random_bytes
 
-
 def encrypt_rsa(message, public_key):
     """
     Chiffre un message avec RSA
@@ -61,9 +60,6 @@ def decrypt_rsa(encrypted_message, private_key):
         print(f"Erreur lors du déchiffrement RSA : {e}")
         return None
 
-
-
-
 class KeyManager:
     def __init__(self):
         # Paramètres pour la dérivation de clé
@@ -76,7 +72,6 @@ class KeyManager:
 
     def _gen_random_blob(self):
         """Génère une structure aléatoire pour masquer les vraies données"""
-
         def random_string(length):
             return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
@@ -127,51 +122,6 @@ class KeyManager:
         except Exception as e:
             print(f"Erreur lors du déchiffrement de la clé privée : {e}")
             return None
-
-    @staticmethod
-    def encrypt_file(file_path, password):
-        """
-        Chiffre un fichier avec AES-GCM en utilisant une clé dérivée du mot de passe
-        """
-        try:
-            # Lecture du contenu du fichier
-            with open(file_path, 'rb') as f:
-                file_data = f.read()
-
-            # Génération du sel
-            salt = get_random_bytes(32)
-
-            # Dérivation de la clé à partir du mot de passe et du sel
-            key = scrypt(
-                password.encode('utf-8'),
-                salt,
-                key_len=32,
-                N=2**14,  # Coût CPU/mémoire
-                r=8,      # Paramètre r de scrypt
-                p=1       # Paramètre p de scrypt
-            )
-
-            # Chiffrement des données du fichier avec AES-GCM
-            cipher = AES.new(key, AES.MODE_GCM)
-            ciphertext, tag = cipher.encrypt_and_digest(file_data)
-            # Construction de la structure de données chiffrée
-            encrypted_data = {
-                'salt': base64.b64encode(salt).decode('utf-8'),
-                'nonce': base64.b64encode(cipher.nonce).decode('utf-8'),
-                'tag': base64.b64encode(tag).decode('utf-8'),
-                'data': base64.b64encode(ciphertext).decode('utf-8')
-            }
-
-            # Sauvegarde des données chiffrées
-            encrypted_file_path = file_path + '.encrypted'
-            with open(encrypted_file_path, 'w') as f:
-                json.dump(encrypted_data, f)
-
-            return True
-
-        except Exception as e:
-            print(f"Erreur lors du chiffrement du fichier : {e}")
-            return False
 
     @staticmethod
     def decrypt_file(filename, password):
@@ -227,7 +177,7 @@ class KeyManager:
             # Génération des clés RSA
             key = RSA.generate(4096)
             private_key = key.export_key(passphrase=key_password, pkcs=8,
-                                         protection="scryptAndAES256-CBC")
+                                       protection="scryptAndAES256-CBC")
             public_key = key.publickey().export_key()
 
             # Génération du sel et dérivation des clés
@@ -235,7 +185,7 @@ class KeyManager:
             keys = {
                 'data': scrypt(key_password_bytes, salt_master, 32, **self.SCRYPT_PARAMS),
                 'structure': scrypt(key_password_bytes + b'_struct', salt_master, 32,
-                                    **self.SCRYPT_PARAMS)
+                                  **self.SCRYPT_PARAMS)
             }
 
             # Chiffrement de la clé privée
@@ -275,7 +225,6 @@ class KeyManager:
             with open("public_key.pem", "wb") as f:
                 f.write(public_key)
 
-            print("Clés générées et sauvegardées avec succès")
             return True
 
         except Exception as e:
