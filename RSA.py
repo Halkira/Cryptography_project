@@ -1,3 +1,6 @@
+import getpass
+import os
+
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
@@ -17,6 +20,11 @@ class KeyManager:
             'r': 8,
             'p': 1
         }
+        self.NB_LAYERS = 50
+        self.field_maps = [None] * self.NB_LAYERS
+        self.private_key = None  # Ajouté
+        self.public_key = None  # Ajouté
+
         self.NB_LAYERS = 50  # Ajout de cette ligne
         self.field_maps = [None] * self.NB_LAYERS  # Utilisation de NB_LAYERS ici
 
@@ -76,15 +84,13 @@ class KeyManager:
             # Génération du sel pour la dérivation de clé
             salt = get_random_bytes(32)
 
-            # Dérivation de la clé
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=100000,
-                backend=default_backend()
+            # Dérivation de la clé avec scrypt
+            key = scrypt(
+                password.encode('utf-8'),
+                salt,
+                32,
+                **self.SCRYPT_PARAMS
             )
-            key = kdf.derive(password.encode())
 
             # Création du cipher AES-GCM
             cipher = AES.new(key, AES.MODE_GCM)
@@ -139,30 +145,63 @@ class KeyManager:
 
     def decrypt_private_key(self, encrypted_data, password):
         try:
-            # Conversion des données hexadécimales en bytes
-            salt = bytes.fromhex(encrypted_data['salt'])
-            nonce = bytes.fromhex(encrypted_data['nonce'])
-            tag = bytes.fromhex(encrypted_data['tag'])
-            ciphertext = bytes.fromhex(encrypted_data['ciphertext'])
+            # Vérification de la structure des données
+            required_fields = ['salt', 'nonce', 'tag', 'ciphertext']
+            for field in required_fields:
+                if field not in encrypted_data:
+                    print(f"Erreur : champ '{field}' manquant dans les données chiffrées")
+                    return None
+
+            # Debug : afficher la structure des données (sans les valeurs sensibles)
+            print("Structure des données chiffrées :")
+            print(f"Longueur salt : {len(encrypted_data['salt'])} caractères")
+            print(f"Longueur nonce : {len(encrypted_data['nonce'])} caractères")
+            print(f"Longueur tag : {len(encrypted_data['tag'])} caractères")
+            print(f"Longueur ciphertext : {len(encrypted_data['ciphertext'])} caractères")
+
+            try:
+                # Conversion des données hex en bytes
+                salt = bytes.fromhex(encrypted_data['salt'])
+                nonce = bytes.fromhex(encrypted_data['nonce'])
+                tag = bytes.fromhex(encrypted_data['tag'])
+                ciphertext = bytes.fromhex(encrypted_data['ciphertext'])
+            except ValueError as e:
+                print(f"Erreur lors de la conversion des données hexadécimales : {e}")
+                return None
+
+            # Debug : afficher les tailles des données converties
+            print("\nTailles après conversion en bytes :")
+            print(f"Salt : {len(salt)} bytes")
+            print(f"Nonce : {len(nonce)} bytes")
+            print(f"Tag : {len(tag)} bytes")
+            print(f"Ciphertext : {len(ciphertext)} bytes")
 
             # Dérivation de la clé
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=100000,
-                backend=default_backend()
+            key = scrypt(
+                password.encode('utf-8'),
+                salt,
+                32,
+                **self.SCRYPT_PARAMS
             )
-            key = kdf.derive(password.encode())
 
             # Création du cipher AES-GCM
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
 
-            # Déchiffrement pour obtenir la clé privée PEM
-            private_key_pem = cipher.decrypt_and_verify(ciphertext, tag)
+            try:
+                # Déchiffrement de la clé privée
+                private_key_data = cipher.decrypt_and_verify(ciphertext, tag)
 
-            # Import de la clé privée PEM
-            return private_key_pem  # Retourne directement le PEM déchiffré
+                # Vérification que les données déchiffrées ressemblent à une clé PEM
+                if b'-----BEGIN' not in private_key_data or b'-----END' not in private_key_data:
+                    print("Les données déchiffrées ne semblent pas être une clé PEM valide")
+                    return None
+
+                return private_key_data
+
+            except ValueError as e:
+                print(f"Erreur lors de la vérification MAC : {e}")
+                print("Le mot de passe est probablement incorrect")
+                return None
 
         except Exception as e:
             print(f"Erreur lors du déchiffrement de la clé privée : {e}")
@@ -170,7 +209,6 @@ class KeyManager:
             return None
 
     def encrypt_field_maps(self, field_maps, password):
-        """Chiffre toutes les couches"""
         try:
             # Préparation des données à chiffrer
             data_to_encrypt = {
@@ -181,13 +219,10 @@ class KeyManager:
 
             # Chiffrement de chaque couche
             for i in range(self.NB_LAYERS):
-                print(f"Traitement de la couche {i}...")
                 if field_maps[i] is not None:
-                    print(f"Données trouvées dans la couche {i}")
                     data_to_encrypt['layers'][str(i)] = field_maps[i]
-                    print(f"Couche {i} préparée")
 
-            # Conversion en JSON
+            # Conversion en JSON puis en bytes
             json_data = json.dumps(data_to_encrypt).encode('utf-8')
 
             # Génération du sel
@@ -207,10 +242,10 @@ class KeyManager:
 
             # Construction du résultat final
             encrypted_result = {
-                'data': base64.b64encode(ciphertext).decode('utf-8'),
-                'salt': base64.b64encode(salt).decode('utf-8'),
-                'nonce': base64.b64encode(cipher.nonce).decode('utf-8'),
-                'tag': base64.b64encode(tag).decode('utf-8')
+                'ciphertext': ciphertext.hex(),  # Changé de 'data' à 'ciphertext'
+                'salt': salt.hex(),
+                'nonce': cipher.nonce.hex(),
+                'tag': tag.hex()
             }
 
             return encrypted_result
@@ -221,21 +256,23 @@ class KeyManager:
             return None
 
     def decrypt_field_maps(self, encrypted_data, password):
-        """Déchiffre le plan des fields"""
         try:
-            # Décodage du JSON
-            encrypted_package = json.loads(encrypted_data)
+            # Si encrypted_data est en bytes, le convertir en JSON
+            if isinstance(encrypted_data, bytes):
+                encrypted_data = json.loads(encrypted_data.decode('utf-8'))
 
-            # Vérification de la présence des champs requis
-            required_fields = ['data', 'salt', 'nonce', 'tag']
-            if not all(field in encrypted_package for field in required_fields):
-                raise ValueError("Format de données invalide")
+            # Vérification de la structure des données
+            required_fields = ['salt', 'nonce', 'tag', 'ciphertext']
+            for field in required_fields:
+                if field not in encrypted_data:
+                    print(f"Erreur : champ '{field}' manquant dans les field maps")
+                    return False
 
-            # Décodage des données base64
-            salt = base64.b64decode(encrypted_package['salt'])
-            nonce = base64.b64decode(encrypted_package['nonce'])
-            tag = base64.b64decode(encrypted_package['tag'])
-            ciphertext = base64.b64decode(encrypted_package['data'])
+            # Conversion des données hex en bytes
+            salt = bytes.fromhex(encrypted_data['salt'])
+            nonce = bytes.fromhex(encrypted_data['nonce'])
+            tag = bytes.fromhex(encrypted_data['tag'])
+            ciphertext = bytes.fromhex(encrypted_data['ciphertext'])
 
             # Dérivation de la clé
             key = scrypt(
@@ -245,19 +282,17 @@ class KeyManager:
                 **self.SCRYPT_PARAMS
             )
 
-            # Déchiffrement
+            # Création du cipher AES-GCM
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-            decrypted_data = cipher.decrypt_and_verify(ciphertext, tag)
 
-            # Décodage du JSON des données déchiffrées
-            decoded_data = json.loads(decrypted_data.decode('utf-8'))
-
-            # Mise à jour des field maps
-            self.field_maps = [None] * self.NB_LAYERS
-            for layer_id, layer_data in decoded_data['layers'].items():
-                self.field_maps[int(layer_id)] = layer_data
-
-            return True
+            try:
+                # Déchiffrement des field maps
+                decrypted_data = cipher.decrypt_and_verify(ciphertext, tag)
+                self.field_maps = json.loads(decrypted_data.decode('utf-8'))
+                return True
+            except ValueError as e:
+                print(f"Erreur lors de la vérification MAC des field maps : {e}")
+                return False
 
         except Exception as e:
             print(f"Erreur lors du déchiffrement des field maps : {e}")
@@ -315,16 +350,11 @@ class KeyManager:
             cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=nonce)
             data = cipher_aes.decrypt_and_verify(ciphertext, tag)
 
-            # Sauvegarde du fichier déchiffré
-            decrypted_filename = filename[:-4]  # Suppression de '.enc'
-            with open(decrypted_filename, 'wb') as file:
-                file.write(data)
-
-            return True
+            return True, data
 
         except Exception as e:
             print(f"Erreur lors du déchiffrement du fichier : {e}")
-            return False
+            return False, None
 
     def init_field_maps(self):
         """Initialise les couches avec des données de test"""
@@ -334,3 +364,134 @@ class KeyManager:
                 'data': f"Données de test pour la couche {i}"
             }
 
+    def load_existing_keys(self, private_key_path, public_key_path, field_maps_path, key_password, field_password):
+        try:
+            # Charger la clé publique
+            with open(public_key_path, 'rb') as f:
+                self.public_key = RSA.import_key(f.read())
+
+            # Charger et déchiffrer la clé privée
+            with open(private_key_path, 'rb') as f:
+                encrypted_private_key_data = json.load(f)
+                decrypted_private_key = self.decrypt_private_key(encrypted_private_key_data, key_password)
+                if decrypted_private_key is None:
+                    print("Échec du déchiffrement de la clé privée")
+                    return False
+                self.private_key = RSA.import_key(decrypted_private_key, passphrase=key_password)
+
+            # Charger et déchiffrer les field maps
+            with open(field_maps_path, 'rb') as f:
+                encrypted_field_maps_data = json.load(f)
+                if not self.decrypt_field_maps(encrypted_field_maps_data, field_password):
+                    print("Échec du déchiffrement des field maps")
+                    return False
+
+            return True
+
+        except Exception as e:
+            print(f"Erreur lors du chargement des clés : {str(e)}")
+            traceback.print_exc()
+            return False
+
+    @staticmethod
+    def decrypt_with_existing_keys():
+        try:
+            # Demander les chemins des fichiers
+            private_key_path = input("Chemin du fichier de clé privée (.enc) : ")
+            public_key_path = input("Chemin du fichier de clé publique (.pem) : ")
+            field_maps_path = input("Chemin du fichier field maps (.enc) : ")
+            encrypted_file_path = input("Chemin du fichier à déchiffrer : ")
+
+            # Vérifier l'existence des fichiers
+            for path in [private_key_path, public_key_path, field_maps_path, encrypted_file_path]:
+                if not os.path.exists(path):
+                    print(f"Le fichier {path} n'existe pas.")
+                    return
+
+            # Demander les deux mots de passe
+            key_password = getpass.getpass("Entrez le mot de passe de la clé privée : ")
+            field_password = getpass.getpass("Entrez le mot de passe des field maps : ")
+
+            # Initialiser le gestionnaire de clés
+            key_manager = KeyManager()
+
+            # Charger les clés existantes
+            if not key_manager.load_existing_keys(
+                    private_key_path,
+                    public_key_path,
+                    field_maps_path,
+                    key_password,
+                    field_password
+            ):
+                print("Échec du chargement des clés")
+                return
+
+            # Déchiffrer le fichier
+            success, decrypted_data = key_manager.decrypt_file(encrypted_file_path, key_password)
+
+            if success and decrypted_data is not None:
+                # Créer le nom du fichier de sortie
+                output_path = encrypted_file_path.replace('.enc', '') if encrypted_file_path.endswith(
+                    '.enc') else encrypted_file_path + '.dec'
+
+                # Écrire le fichier déchiffré
+                try:
+                    with open(output_path, 'wb') as f:
+                        f.write(decrypted_data)
+                    print(f"\nFichier déchiffré et sauvegardé avec succès : {output_path}")
+                except Exception as e:
+                    print(f"Erreur lors de l'écriture du fichier : {e}")
+            else:
+                print("Échec du déchiffrement du fichier")
+
+        except Exception as e:
+            print(f"Erreur lors du déchiffrement : {str(e)}")
+            traceback.print_exc()
+
+    def test_key_generation_and_decryption(self):
+        """Méthode de test pour vérifier le processus complet"""
+        try:
+            print("\n=== Test de génération et déchiffrement des clés ===")
+
+
+            # 1. Génération des clés
+            password = "caca"
+            print(f"\n1. Génération des clés avec le mot de passe: {password}")
+            private_key, public_key = self.generate_key_pair(password)
+            if private_key is None or public_key is None:
+                print("Échec de la génération des clés")
+                return False
+            print("Clés générées avec succès")
+
+            # 2. Chiffrement de la clé privée
+            print("\n2. Chiffrement de la clé privée")
+            encrypted_private_key = self.encrypt_private_key(private_key, password)
+            if encrypted_private_key is None:
+                print("Échec du chiffrement de la clé privée")
+                return False
+            print("Structure de la clé privée chiffrée:")
+            print(json.dumps(encrypted_private_key, indent=2))
+
+            # 3. Test immédiat de déchiffrement
+            print("\n3. Test de déchiffrement immédiat")
+            decrypted_private_key = self.decrypt_private_key(encrypted_private_key, password)
+            if decrypted_private_key is None:
+                print("Échec du déchiffrement immédiat")
+                return False
+
+            # 4. Vérification que la clé déchiffrée correspond à l'originale
+            print("\n4. Vérification de l'intégrité")
+            if decrypted_private_key == private_key:
+                print("Succès : La clé déchiffrée correspond à l'originale")
+            else:
+                print("Échec : La clé déchiffrée ne correspond pas à l'originale")
+                print(f"Longueur originale: {len(private_key)}")
+                print(f"Longueur déchiffrée: {len(decrypted_private_key)}")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(f"Erreur lors du test : {e}")
+            traceback.print_exc()
+            return False

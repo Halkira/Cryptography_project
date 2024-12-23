@@ -9,87 +9,91 @@ from Crypto.PublicKey import RSA as CryptoRSA
 
 
 def main():
-        while True:
-            # Choix de l'algorithme
-            print("\nChoisissez l'algorithme de chiffrement :")
-            print("1. RSA")
-            print("2. AES")
-            print("3. Quitter")
-            algo_choix = input("Votre choix : ")
+    while True:
+        # Choix de l'algorithme
+        print("\nChoisissez l'algorithme de chiffrement :")
+        print("1. RSA - Générer nouvelles clés")
+        print("2. RSA - Utiliser clés existantes")
+        print("3. AES")
+        print("4. Quitter")
+        algo_choix = input("Votre choix : ")
 
-            if algo_choix == "3":
-                print("Au revoir !")
-                break
+        if algo_choix == "4":
+            print("Au revoir !")
+            break
 
-            if algo_choix not in ["1", "2"]:
-                print("Choix invalide. Veuillez réessayer.\n")
+        if algo_choix not in ["1", "2", "3"]:
+            print("Choix invalide. Veuillez réessayer.\n")
+            continue
+
+        # Traitement selon le choix
+        if algo_choix == "1":  # RSA - Nouvelles clés
+            # Mots de passe pour RSA
+            key_password = getpass.getpass("Entrez un mot de passe pour la clé privée RSA : ")
+            field_maps_password = getpass.getpass("Entrez un mot de passe pour les field maps : ")
+            file_password = getpass.getpass("Entrez un mot de passe pour le fichier : ")
+
+            key_manager = RSA.KeyManager()
+            key_manager.init_field_maps()
+            if key_manager.test_key_generation_and_decryption():
+                print("\nTest réussi, continuation du programme...")
+            else:
+                print("\nÉchec des tests, arrêt du programme")
+                continue
+            # Génération des clés
+            private_key, public_key = key_manager.generate_key_pair(key_password)
+            if not private_key or not public_key:
+                print("Erreur lors de la génération des clés RSA")
                 continue
 
-            # Initialisation des clés selon l'algorithme choisi
-            if algo_choix == "1":
-                # Mots de passe pour RSA
-                key_password = getpass.getpass("Entrez un mot de passe pour la clé privée RSA : ")
-                field_maps_password = getpass.getpass("Entrez un mot de passe pour les field maps : ")
-                file_password = getpass.getpass("Entrez un mot de passe pour le fichier : ")
+            # Stockage de la clé publique
+            key_manager.public_key = CryptoRSA.import_key(public_key)
 
-                key_manager = RSA.KeyManager()
-                key_manager.init_field_maps()
-                # Génération des clés
-                private_key, public_key = key_manager.generate_key_pair(key_password)
-                if not private_key or not public_key:
-                    print("Erreur lors de la génération des clés RSA")
-                    continue
+            # Chiffrement de la clé privée
+            encrypted_private_key = key_manager.encrypt_private_key(private_key, key_password)
+            if not encrypted_private_key:
+                print("Erreur lors du chiffrement de la clé privée")
+                continue
 
-                # Stockage de la clé publique dans l'instance
-                key_manager.public_key = CryptoRSA.import_key(public_key)
+            # Chiffrement des field maps
+            encrypted_maps = key_manager.encrypt_field_maps(key_manager.field_maps, field_maps_password)
+            if not encrypted_maps:
+                print("Erreur lors du chiffrement des field maps")
+                continue
 
-                # Chiffrement de la clé privée
-                encrypted_private_key = key_manager.encrypt_private_key(private_key, key_password)
-                if not encrypted_private_key:
-                    print("Erreur lors du chiffrement de la clé privée")
-                    continue
+            # Sauvegarde des fichiers
+            try:
+                with open('public_key.pem', 'wb') as f:
+                    f.write(public_key)
 
-                # Chiffrement des field maps
-                encrypted_maps = key_manager.encrypt_field_maps(key_manager.field_maps, field_maps_password)
-                if not encrypted_maps:
-                    print("Erreur lors du chiffrement des field maps")
-                    continue
+                with open('private_key.enc', 'w') as f:
+                    json.dump(encrypted_private_key, f)
 
+                with open('field_maps.enc', 'w') as f:
+                    json.dump(encrypted_maps, f)
 
-                # Modifiez la partie de sauvegarde des fichiers comme suit :
-                try:
-                    with open('public_key.pem', 'wb') as f:
-                        f.write(public_key)
+                print("\nClés RSA générées et sauvegardées")
 
-                    with open('private_key.enc', 'w') as f:
-                        json.dump(encrypted_private_key, f)
+            except Exception as e:
+                print(f"Erreur lors de la sauvegarde des fichiers : {str(e)}")
+                traceback.print_exc()
+                continue
 
-                    # Pour la sauvegarde :
-                    with open('field_maps.enc', 'w') as f:
-                        json.dump(encrypted_maps, f)
+        elif algo_choix == "2":  # RSA - Clés existantes
+            RSA.KeyManager.decrypt_with_existing_keys()
+            continue
 
-                    # Pour la lecture :
-                    with open('field_maps.enc', 'r') as f:
-                        encrypted_maps_data = json.load(f)
+        elif algo_choix == "3":  # AES
+            aes_key = get_random_bytes(32)
+            print("\nClé AES générée")
 
-                    print("\nClés RSA générées et sauvegardées")
-
-                except Exception as e:
-                    print(f"Erreur lors de la sauvegarde des fichiers : {str(e)}")
-                    traceback.print_exc()  # Ajout pour voir l'erreur complète
-                    continue
-
-
-            else:
-                aes_key = get_random_bytes(32)
-                print("\nClé AES générée")
-
+        # Menu des opérations (uniquement pour RSA nouvelles clés et AES)
+        if algo_choix in ["1", "3"]:
             while True:
-                # Menu des opérations
                 print("\nQue souhaitez-vous faire ?")
                 print("1. Chiffrer")
                 print("2. Déchiffrer")
-                print("3. Retour au choix de l'algorithme")
+                print("3. Retour au menu principal")
                 print("4. Quitter")
                 choix = input("Votre choix : ")
 
@@ -99,9 +103,9 @@ def main():
                     print("\nAu revoir !")
                     sys.exit()
 
-                if choix == "1":
+                if choix == "1":  # Chiffrement
                     filename = input("Entrez le nom du fichier à chiffrer : ")
-                    if algo_choix == "1":
+                    if algo_choix == "1":  # RSA
                         try:
                             if key_manager.encrypt_file(filename, file_password):
                                 print(f"\nFichier chiffré avec succès : {filename}.enc")
@@ -110,50 +114,33 @@ def main():
                         except Exception as e:
                             print(f"Erreur lors du chiffrement du fichier : {e}")
 
-
-                elif choix == "2":
-
+                elif choix == "2":  # Déchiffrement
                     filename = input("Entrez le nom du fichier chiffré : ")
-
-                    if algo_choix == "1":
-
+                    if algo_choix == "1":  # RSA
                         try:
-
                             # Déchiffrement des field maps
-
                             with open('field_maps.enc', 'rb') as f:
-
                                 encrypted_maps_data = f.read()
 
                             field_maps_password = getpass.getpass("Entrez le mot de passe des field maps : ")
-
                             if not key_manager.decrypt_field_maps(encrypted_maps_data, field_maps_password):
                                 print("Erreur lors du déchiffrement des field maps")
-
                                 continue
 
                             # Déchiffrement de la clé privée
-
                             with open('private_key.enc', 'r') as f:
-
                                 encrypted_private_key_data = json.load(f)
-
-                            # Vérification de la structure des données
 
                             if not isinstance(encrypted_private_key_data, dict):
                                 print("Format de clé privée invalide")
-
                                 continue
 
                             required_fields = ['salt', 'nonce', 'tag', 'ciphertext']
-
                             if not all(field in encrypted_private_key_data for field in required_fields):
                                 print("Structure de la clé privée incorrecte")
-
                                 continue
 
                             key_password = getpass.getpass("Entrez le mot de passe de la clé privée : ")
-
                             decrypted_private_key = key_manager.decrypt_private_key(
                                 encrypted_private_key_data,
                                 key_password
@@ -161,8 +148,10 @@ def main():
 
                             if decrypted_private_key:
                                 try:
-                                    key_manager.private_key = CryptoRSA.import_key(decrypted_private_key,
-                                                                                   passphrase=key_password)
+                                    key_manager.private_key = CryptoRSA.import_key(
+                                        decrypted_private_key,
+                                        passphrase=key_password
+                                    )
                                 except Exception as e:
                                     print(f"Erreur lors de l'import de la clé privée : {e}")
                                     continue
@@ -171,22 +160,14 @@ def main():
                                 continue
 
                             # Déchiffrement du fichier
-
                             file_password = getpass.getpass("Entrez le mot de passe du fichier : ")
-
                             if key_manager.decrypt_file(filename, file_password):
-
                                 print(f"\nFichier déchiffré avec succès : {filename[:-4]}")
-
                             else:
-
                                 print("Erreur lors du déchiffrement du fichier")
 
-
                         except Exception as e:
-
                             print(f"Erreur lors du déchiffrement : {e}")
-
                             traceback.print_exc()
 
 
