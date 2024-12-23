@@ -1,15 +1,11 @@
 import getpass
 import os
-
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
 import base64
 import json
 from Crypto.Protocol.KDF import scrypt
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
 import traceback
 
 
@@ -32,7 +28,7 @@ class KeyManager:
         """Génère une nouvelle paire de clés RSA et les field maps"""
         try:
             # Génération de la paire de clés RSA
-            key = RSA.generate(2048)
+            key = RSA.generate(4096)
 
             # Export de la clé privée avec mot de passe
             private_key = key.export_key(passphrase=key_password)
