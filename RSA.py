@@ -29,7 +29,7 @@ class KeyManager:
         self.field_maps = [None] * self.NB_LAYERS  # Utilisation de NB_LAYERS ici
 
     def generate_key_pair(self, key_password):
-        """Génère une nouvelle paire de clés RSA"""
+        """Génère une nouvelle paire de clés RSA et les field maps"""
         try:
             # Génération de la paire de clés RSA
             key = RSA.generate(2048)
@@ -49,6 +49,19 @@ class KeyManager:
             # Définir les chemins des fichiers
             private_key_path = os.path.join(save_dir, f"{base_name}_private.enc")
             public_key_path = os.path.join(save_dir, f"{base_name}_public.pem")
+            field_maps_path = os.path.join(save_dir, f"{base_name}_field_maps.enc")
+
+            # Initialiser les field maps
+            self.init_field_maps()
+
+            # Demander le mot de passe pour les field maps
+            field_maps_password = getpass.getpass("Entrez un mot de passe pour les field maps : ")
+
+            # Chiffrer et sauvegarder les field maps
+            encrypted_maps = self.encrypt_field_maps(self.field_maps, field_maps_password)
+            if encrypted_maps:
+                with open(field_maps_path, 'w') as f:
+                    json.dump(encrypted_maps, f)
 
             # Sauvegarder la clé privée (déjà chiffrée par export_key)
             with open(private_key_path, 'wb') as f:
@@ -58,13 +71,16 @@ class KeyManager:
             with open(public_key_path, 'wb') as f:
                 f.write(public_key)
 
-            print(f"\nClés sauvegardées avec succès:")
+            print(f"\nFichiers sauvegardés avec succès:")
             print(f"Clé privée: {private_key_path}")
             print(f"Clé publique: {public_key_path}")
+            print(f"Field maps: {field_maps_path}")
 
             return private_key, public_key
+
         except Exception as e:
             print(f"Erreur lors de la génération des clés : {e}")
+            traceback.print_exc()
             return None, None
 
     def encrypt_private_key(self, private_key, password):

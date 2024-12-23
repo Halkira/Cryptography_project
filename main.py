@@ -6,7 +6,7 @@ import RSA
 import AES
 import traceback
 from Crypto.PublicKey import RSA as CryptoRSA
-
+import os
 
 def handle_rsa_new_keys():
     """Gestion de la génération de nouvelles clés RSA"""
@@ -201,6 +201,106 @@ def main():
 
         else:
             print("Choix invalide. Veuillez réessayer.\n")
+
+
+def handle_rsa_operations():
+    """Gestion des opérations RSA avec clés existantes"""
+    key_manager = RSA.KeyManager()
+    while True:
+        print("\nMenu RSA :")
+        print("1. Chiffrer")
+        print("2. Déchiffrer")
+        print("3. Retour au menu principal")
+        print("4. Quitter")
+        choix = input("Votre choix : ")
+
+        if choix == "3":
+            break
+        elif choix == "4":
+            print("\nAu revoir !")
+            sys.exit()
+        elif choix == "1":  # Chiffrement
+            try:
+                filepath = input("Entrez le chemin complet du fichier à chiffrer : ")
+                if not os.path.exists(filepath):
+                    print(f"Erreur : Le fichier {filepath} n'existe pas.")
+                    continue
+
+                keys_dir = input("Entrez le répertoire contenant les clés : ")
+                base_name = input("Entrez le nom de base des fichiers de clés : ")
+
+                public_key_path = os.path.join(keys_dir, f"{base_name}_public.pem")
+
+                if not os.path.exists(public_key_path):
+                    print(f"Erreur : Le fichier de clé publique {public_key_path} n'existe pas.")
+                    continue
+
+                with open(public_key_path, 'rb') as f:
+                    public_key = f.read()
+                key_manager.public_key = CryptoRSA.import_key(public_key)
+
+                file_password = getpass.getpass("Entrez un mot de passe pour le fichier : ")
+                if key_manager.encrypt_file(filepath, file_password):
+                    print(f"\nFichier chiffré avec succès : {filepath}.enc")
+                else:
+                    print("Erreur lors du chiffrement du fichier")
+
+            except Exception as e:
+                print(f"Erreur lors du chiffrement : {str(e)}")
+                traceback.print_exc()
+
+        elif choix == "2":  # Déchiffrement
+            try:
+                encrypted_filepath = input("Entrez le chemin complet du fichier chiffré : ")
+                if not os.path.exists(encrypted_filepath):
+                    print(f"Erreur : Le fichier {encrypted_filepath} n'existe pas.")
+                    continue
+
+                keys_dir = input("Entrez le répertoire contenant les clés : ")
+                base_name = input("Entrez le nom de base des fichiers de clés : ")
+
+                private_key_path = os.path.join(keys_dir, f"{base_name}_private.enc")
+                field_maps_path = os.path.join(keys_dir, f"{base_name}_field_maps.enc")
+
+                if not os.path.exists(private_key_path):
+                    print(f"Erreur : Le fichier de clé privée {private_key_path} n'existe pas.")
+                    continue
+                if not os.path.exists(field_maps_path):
+                    print(f"Erreur : Le fichier field maps {field_maps_path} n'existe pas.")
+                    continue
+
+                with open(field_maps_path, 'r') as f:
+                    encrypted_maps = json.load(f)
+
+                field_maps_password = getpass.getpass("Entrez le mot de passe des field maps : ")
+                if not key_manager.decrypt_field_maps(encrypted_maps, field_maps_password):
+                    print("Erreur lors du déchiffrement des field maps")
+                    continue
+
+                with open(private_key_path, 'rb') as f:
+                    private_key_data = f.read()
+
+                key_password = getpass.getpass("Entrez le mot de passe de la clé privée : ")
+                # Utiliser CryptoRSA au lieu de RSA
+                key_manager.private_key = CryptoRSA.import_key(private_key_data, passphrase=key_password)
+
+                file_password = getpass.getpass("Entrez le mot de passe du fichier : ")
+                success, decrypted_data = key_manager.decrypt_file(encrypted_filepath, file_password)
+
+                if success:
+                    # Créer le nom du fichier de sortie
+                    output_path = encrypted_filepath[:-4] if encrypted_filepath.endswith(
+                        '.enc') else encrypted_filepath + '.dec'
+                    # Écrire les données déchiffrées dans un nouveau fichier
+                    with open(output_path, 'wb') as f:
+                        f.write(decrypted_data)
+                    print(f"\nFichier déchiffré avec succès : {output_path}")
+                else:
+                    print("Erreur lors du déchiffrement du fichier")
+
+            except Exception as e:
+                print(f"Erreur lors du déchiffrement : {str(e)}")
+                traceback.print_exc()
 
 
 if __name__ == "__main__":
