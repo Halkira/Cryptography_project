@@ -302,7 +302,7 @@ class KeyManager:
             return False
 
     def encrypt_file(self, filename, file_password):
-        """Chiffre un fichier avec AES"""
+        """Chiffre un fichier avec AES en utilisant un format JSON"""
         try:
             # Génération d'une clé de session
             session_key = get_random_bytes(32)
@@ -310,6 +310,7 @@ class KeyManager:
             # Chiffrement AES du fichier
             cipher_aes = AES.new(session_key, AES.MODE_GCM)
 
+            # Lecture et chiffrement du fichier
             with open(filename, 'rb') as file:
                 data = file.read()
                 ciphertext, tag = cipher_aes.encrypt_and_digest(data)
@@ -318,31 +319,38 @@ class KeyManager:
             cipher_rsa = PKCS1_OAEP.new(self.public_key)
             enc_session_key = cipher_rsa.encrypt(session_key)
 
-            # Sauvegarde du fichier chiffré
+            # Structure des données chiffrées
+            encrypted_data = {
+                'enc_session_key': enc_session_key.hex(),
+                'nonce': cipher_aes.nonce.hex(),
+                'tag': tag.hex(),
+                'ciphertext': ciphertext.hex()
+            }
+
+            # Sauvegarde en JSON
             encrypted_filename = filename + '.enc'
-            with open(encrypted_filename, 'wb') as file:
-                [file.write(x) for x in (
-                    enc_session_key,
-                    cipher_aes.nonce,
-                    tag,
-                    ciphertext
-                )]
+            with open(encrypted_filename, 'w') as file:
+                json.dump(encrypted_data, file)
 
             return True
 
         except Exception as e:
             print(f"Erreur lors du chiffrement du fichier : {e}")
+            traceback.print_exc()
             return False
 
     def decrypt_file(self, filename, file_password):
-        """Déchiffre un fichier"""
+        """Déchiffre un fichier au format JSON"""
         try:
-            # Lecture du fichier chiffré
-            with open(filename, 'rb') as file:
-                enc_session_key = file.read(256)  # Taille de la clé RSA
-                nonce = file.read(16)
-                tag = file.read(16)
-                ciphertext = file.read()
+            # Lecture du fichier JSON
+            with open(filename, 'r') as file:
+                encrypted_data = json.load(file)
+
+            # Conversion des données hex en bytes
+            enc_session_key = bytes.fromhex(encrypted_data['enc_session_key'])
+            nonce = bytes.fromhex(encrypted_data['nonce'])
+            tag = bytes.fromhex(encrypted_data['tag'])
+            ciphertext = bytes.fromhex(encrypted_data['ciphertext'])
 
             # Déchiffrement de la clé de session
             cipher_rsa = PKCS1_OAEP.new(self.private_key)
@@ -356,6 +364,7 @@ class KeyManager:
 
         except Exception as e:
             print(f"Erreur lors du déchiffrement du fichier : {e}")
+            traceback.print_exc()
             return False, None
 
     def init_field_maps(self):
@@ -540,4 +549,3 @@ class KeyManager:
         else:
             print("Échec : La clé déchiffrée ne correspond pas à l'originale")
             return None, None
-
