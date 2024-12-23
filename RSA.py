@@ -38,44 +38,34 @@ class KeyManager:
             private_key = key.export_key(passphrase=key_password)
             public_key = key.publickey().export_key()
 
+            # Demander le répertoire de destination
+            save_dir = input("Entrez le répertoire où sauvegarder les clés : ")
+            base_name = input("Entrez le nom de base pour les fichiers de clés : ")
+
+            # Créer le répertoire s'il n'existe pas
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+            # Définir les chemins des fichiers
+            private_key_path = os.path.join(save_dir, f"{base_name}_private.enc")
+            public_key_path = os.path.join(save_dir, f"{base_name}_public.pem")
+
+            # Sauvegarder la clé privée (déjà chiffrée par export_key)
+            with open(private_key_path, 'wb') as f:
+                f.write(private_key)
+
+            # Sauvegarder la clé publique
+            with open(public_key_path, 'wb') as f:
+                f.write(public_key)
+
+            print(f"\nClés sauvegardées avec succès:")
+            print(f"Clé privée: {private_key_path}")
+            print(f"Clé publique: {public_key_path}")
+
             return private_key, public_key
         except Exception as e:
             print(f"Erreur lors de la génération des clés : {e}")
             return None, None
-
-    def encrypt_layer(self, data, password, layer_number):
-        """Chiffre une couche spécifique"""
-        try:
-            # Génération d'un sel aléatoire
-            salt = get_random_bytes(32)
-
-            # Dérivation de la clé pour cette couche
-            layer_key = scrypt(
-                password.encode('utf-8') + bytes([layer_number]),
-                salt,
-                32,
-                **self.SCRYPT_PARAMS
-            )
-
-            # Création du chiffreur
-            cipher = AES.new(layer_key, AES.MODE_GCM)
-
-            # Chiffrement des données
-            ciphertext, tag = cipher.encrypt_and_digest(
-                json.dumps(data).encode('utf-8')
-            )
-
-            # Construction du résultat
-            return {
-                'data': base64.b64encode(ciphertext).decode('utf-8'),
-                'nonce': base64.b64encode(cipher.nonce).decode('utf-8'),
-                'tag': base64.b64encode(tag).decode('utf-8'),
-                'salt': base64.b64encode(salt).decode('utf-8')
-            }
-
-        except Exception as e:
-            print(f"Erreur lors du chiffrement de la couche {layer_number}: {e}")
-            return None
 
     def encrypt_private_key(self, private_key, password):
         try:
@@ -448,50 +438,94 @@ class KeyManager:
             print(f"Erreur lors du déchiffrement : {str(e)}")
             traceback.print_exc()
 
-    def test_key_generation_and_decryption(self):
-        """Méthode de test pour vérifier le processus complet"""
+    def save_keys(self, private_key, public_key, field_maps, key_password, field_password):
+        """
+        Sauvegarde les clés et field maps dans des fichiers
+        """
         try:
-            print("\n=== Test de génération et déchiffrement des clés ===")
+            # Demander le répertoire de destination
+            save_dir = input("Entrez le répertoire où sauvegarder les clés : ")
+            base_name = input("Entrez le nom de base pour les fichiers de clés : ")
 
+            # Créer le répertoire s'il n'existe pas
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
 
-            # 1. Génération des clés
-            password = "caca"
-            print(f"\n1. Génération des clés avec le mot de passe: {password}")
-            private_key, public_key = self.generate_key_pair(password)
-            if private_key is None or public_key is None:
-                print("Échec de la génération des clés")
-                return False
-            print("Clés générées avec succès")
+            # Définir les chemins des fichiers
+            private_key_path = os.path.join(save_dir, f"{base_name}_private.enc")
+            public_key_path = os.path.join(save_dir, f"{base_name}_public.pem")
+            field_maps_path = os.path.join(save_dir, f"{base_name}_field_maps.enc")
 
-            # 2. Chiffrement de la clé privée
-            print("\n2. Chiffrement de la clé privée")
-            encrypted_private_key = self.encrypt_private_key(private_key, password)
+            # Chiffrer la clé privée
+            encrypted_private_key = self.encrypt_private_key(private_key, key_password)
             if encrypted_private_key is None:
-                print("Échec du chiffrement de la clé privée")
-                return False
-            print("Structure de la clé privée chiffrée:")
-            print(json.dumps(encrypted_private_key, indent=2))
-
-            # 3. Test immédiat de déchiffrement
-            print("\n3. Test de déchiffrement immédiat")
-            decrypted_private_key = self.decrypt_private_key(encrypted_private_key, password)
-            if decrypted_private_key is None:
-                print("Échec du déchiffrement immédiat")
                 return False
 
-            # 4. Vérification que la clé déchiffrée correspond à l'originale
-            print("\n4. Vérification de l'intégrité")
-            if decrypted_private_key == private_key:
-                print("Succès : La clé déchiffrée correspond à l'originale")
-            else:
-                print("Échec : La clé déchiffrée ne correspond pas à l'originale")
-                print(f"Longueur originale: {len(private_key)}")
-                print(f"Longueur déchiffrée: {len(decrypted_private_key)}")
+            # Chiffrer les field maps
+            encrypted_field_maps = self.encrypt_field_maps(field_maps, field_password)
+            if encrypted_field_maps is None:
                 return False
+
+            # Sauvegarder la clé privée chiffrée
+            with open(private_key_path, 'w') as f:
+                json.dump(encrypted_private_key, f)
+
+            # Sauvegarder la clé publique
+            with open(public_key_path, 'wb') as f:
+                f.write(public_key)
+
+            # Sauvegarder les field maps chiffrés
+            with open(field_maps_path, 'w') as f:
+                json.dump(encrypted_field_maps, f)
+
+            print(f"\nClés sauvegardées avec succès:")
+            print(f"Clé privée: {private_key_path}")
+            print(f"Clé publique: {public_key_path}")
+            print(f"Field maps: {field_maps_path}")
 
             return True
 
         except Exception as e:
-            print(f"Erreur lors du test : {e}")
+            print(f"Erreur lors de la sauvegarde des clés : {str(e)}")
             traceback.print_exc()
             return False
+
+    def test_key_generation_and_decryption(self, key_password):
+        """Test la génération et le déchiffrement des clés"""
+        print("\n=== Test de génération et déchiffrement des clés ===\n")
+
+        # 1. Génération des clés
+        print(f"1. Génération des clés avec le mot de passe fourni")
+        private_key, public_key = self.generate_key_pair(key_password)
+
+        if not private_key or not public_key:
+            return None, None
+
+        # 2. Chiffrement de la clé privée
+        encrypted_private_key = self.encrypt_private_key(private_key, key_password)
+        if not encrypted_private_key:
+            return None, None
+
+        print("2. Chiffrement de la clé privée")
+        print("Structure de la clé privée chiffrée:")
+        print(json.dumps(encrypted_private_key, indent=2))
+
+        # 3. Test de déchiffrement immédiat
+        print("\n3. Test de déchiffrement immédiat")
+        # Vérification des tailles
+        print("Structure des données chiffrées :")
+        print(f"Longueur salt : {len(encrypted_private_key['salt'])} caractères")
+        print(f"Longueur nonce : {len(encrypted_private_key['nonce'])} caractères")
+        print(f"Longueur tag : {len(encrypted_private_key['tag'])} caractères")
+        print(f"Longueur ciphertext : {len(encrypted_private_key['ciphertext'])} caractères")
+
+        # 4. Vérification finale
+        decrypted_key = self.decrypt_private_key(encrypted_private_key, key_password)
+        if decrypted_key == private_key:
+            print("\n4. Vérification de l'intégrité")
+            print("Succès : La clé déchiffrée correspond à l'originale")
+            return private_key, public_key
+        else:
+            print("Échec : La clé déchiffrée ne correspond pas à l'originale")
+            return None, None
+
