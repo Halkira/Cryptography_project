@@ -128,11 +128,9 @@ def handle_rsa_operations():
                 print(f"Erreur lors du déchiffrement : {str(e)}")
                 traceback.print_exc()
 
-
 def handle_aes_operations():
     """Gestion des opérations AES"""
     aes_manager = AES.AESCipher()
-    aes_key = get_random_bytes(32)  # Génération d'une clé AES de 256 bits
 
     while True:
         print("\nMenu AES :")
@@ -150,7 +148,8 @@ def handle_aes_operations():
         elif choix == "1":  # Chiffrement
             try:
                 filepath = input("Entrez le chemin du fichier à chiffrer : ")
-                if aes_manager.encrypt_file(filepath, aes_key):
+                password = getpass.getpass("Entrez le mot de passe pour le chiffrement : ")
+                if aes_manager.encrypt_file(filepath, password):
                     print("Chiffrement terminé avec succès")
                 else:
                     print("Échec du chiffrement")
@@ -161,7 +160,8 @@ def handle_aes_operations():
         elif choix == "2":  # Déchiffrement
             try:
                 filepath = input("Entrez le chemin du fichier à déchiffrer : ")
-                if aes_manager.decrypt_file(filepath, aes_key):
+                password = getpass.getpass("Entrez le mot de passe pour le déchiffrement : ")
+                if aes_manager.decrypt_file(filepath, password):
                     print("Déchiffrement terminé avec succès")
                 else:
                     print("Échec du déchiffrement")
