@@ -191,7 +191,8 @@ def main():
                 # Continuer avec les opérations de chiffrement/déchiffrement si nécessaire
 
         elif algo_choix == "2":
-            RSA.KeyManager.decrypt_with_existing_keys()
+            key_manager = RSA.KeyManager()  # Création de l'instance
+            key_manager.decrypt_with_existing_keys()
 
         elif algo_choix == "3":
             handle_rsa_operations()

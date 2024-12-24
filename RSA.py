@@ -375,37 +375,53 @@ class KeyManager:
                 'data': f"Données de test pour la couche {i}"
             }
 
-    def load_existing_keys(self, private_key_path, public_key_path, field_maps_path, key_password, field_password):
+    def load_existing_keys(self, private_key_path, public_key_path, field_maps_path, key_password, field_maps_password):
         try:
-            # Charger la clé publique
-            with open(public_key_path, 'rb') as f:
-                self.public_key = RSA.import_key(f.read())
+            # Vérification des chemins de fichiers
+            if not all(os.path.exists(path) for path in [private_key_path, public_key_path, field_maps_path]):
+                print("Erreur : Un ou plusieurs fichiers n'existent pas")
+                return False
 
-            # Charger et déchiffrer la clé privée
+            # Lecture de la clé privée
             with open(private_key_path, 'rb') as f:
-                encrypted_private_key_data = json.load(f)
-                decrypted_private_key = self.decrypt_private_key(encrypted_private_key_data, key_password)
-                if decrypted_private_key is None:
-                    print("Échec du déchiffrement de la clé privée")
-                    return False
-                self.private_key = RSA.import_key(decrypted_private_key, passphrase=key_password)
+                private_key_data = f.read()
 
-            # Charger et déchiffrer les field maps
-            with open(field_maps_path, 'rb') as f:
-                encrypted_field_maps_data = json.load(f)
-                if not self.decrypt_field_maps(encrypted_field_maps_data, field_password):
-                    print("Échec du déchiffrement des field maps")
+            # Lecture de la clé publique
+            with open(public_key_path, 'rb') as f:
+                public_key_data = f.read()
+
+            # Lecture des field maps
+            with open(field_maps_path, 'r') as f:
+                encrypted_field_maps = json.load(f)
+
+            try:
+                # Import des clés
+                self.private_key = RSA.import_key(private_key_data, passphrase=key_password)
+                self.public_key = RSA.import_key(public_key_data)
+
+                # Vérification des attributs de la clé privée
+                if not hasattr(self.private_key, 'n') or not hasattr(self.private_key, 'd'):
+                    print("Erreur : La clé privée n'a pas le bon format")
                     return False
 
+            except ValueError as e:
+                print(f"Erreur lors de l'import des clés : {e}")
+                return False
+
+            # Déchiffrement des field maps
+            if not self.decrypt_field_maps(encrypted_field_maps, field_maps_password):
+                print("Erreur lors du déchiffrement des field maps")
+                return False
+
+            print("Clés et field maps chargés avec succès")
             return True
 
         except Exception as e:
-            print(f"Erreur lors du chargement des clés : {str(e)}")
+            print(f"Erreur lors du chargement des clés : {e}")
             traceback.print_exc()
             return False
 
-    @staticmethod
-    def decrypt_with_existing_keys():
+    def decrypt_with_existing_keys(self):
         try:
             # Demander les chemins des fichiers
             private_key_path = input("Chemin du fichier de clé privée (.enc) : ")
@@ -413,51 +429,40 @@ class KeyManager:
             field_maps_path = input("Chemin du fichier field maps (.enc) : ")
             encrypted_file_path = input("Chemin du fichier à déchiffrer : ")
 
-            # Vérifier l'existence des fichiers
-            for path in [private_key_path, public_key_path, field_maps_path, encrypted_file_path]:
-                if not os.path.exists(path):
-                    print(f"Le fichier {path} n'existe pas.")
-                    return
-
-            # Demander les deux mots de passe
+            # Demander les mots de passe
             key_password = getpass.getpass("Entrez le mot de passe de la clé privée : ")
-            field_password = getpass.getpass("Entrez le mot de passe des field maps : ")
+            field_maps_password = getpass.getpass("Entrez le mot de passe des field maps : ")
 
-            # Initialiser le gestionnaire de clés
-            key_manager = KeyManager()
-
-            # Charger les clés existantes
-            if not key_manager.load_existing_keys(
+            # Charger les clés
+            if not self.load_existing_keys(
                     private_key_path,
                     public_key_path,
                     field_maps_path,
                     key_password,
-                    field_password
+                    field_maps_password
             ):
                 print("Échec du chargement des clés")
-                return
+                return False
 
             # Déchiffrer le fichier
-            success, decrypted_data = key_manager.decrypt_file(encrypted_file_path, key_password)
-
-            if success and decrypted_data is not None:
-                # Créer le nom du fichier de sortie
-                output_path = encrypted_file_path.replace('.enc', '') if encrypted_file_path.endswith(
-                    '.enc') else encrypted_file_path + '.dec'
-
-                # Écrire le fichier déchiffré
-                try:
-                    with open(output_path, 'wb') as f:
-                        f.write(decrypted_data)
-                    print(f"\nFichier déchiffré et sauvegardé avec succès : {output_path}")
-                except Exception as e:
-                    print(f"Erreur lors de l'écriture du fichier : {e}")
-            else:
+            success, decrypted_data = self.decrypt_file(encrypted_file_path, key_password)
+            if not success:
                 print("Échec du déchiffrement du fichier")
+                return False
+
+            # Sauvegarder le fichier déchiffré
+            output_path = encrypted_file_path.replace('.enc', '') if encrypted_file_path.endswith(
+                '.enc') else encrypted_file_path + '.dec'
+            with open(output_path, 'wb') as f:
+                f.write(decrypted_data)
+
+            print(f"Fichier déchiffré avec succès : {output_path}")
+            return True
 
         except Exception as e:
-            print(f"Erreur lors du déchiffrement : {str(e)}")
+            print(f"Erreur lors du déchiffrement : {e}")
             traceback.print_exc()
+            return False
 
     def save_keys(self, private_key, public_key, field_maps, key_password, field_password):
         """
